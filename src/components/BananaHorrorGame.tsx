@@ -773,7 +773,8 @@ export function BananaHorrorGame() {
               className="flex justify-between text-xs font-mono px-2 w-full"
               style={{ maxWidth: W }}
             >
-              <span>🍎 {s.collected}/5</span>
+              <span>🍎 {s.collected}/{s.totalApples}</span>
+              <span style={{ color: "#f4d03f" }}>{activeDiff.label}</span>
               <span>{s.hidden ? "🫥 隠れ" : "🚶"}</span>
               <span>
                 {s.status === "won"
