@@ -520,7 +520,8 @@ export function BananaHorrorGame() {
         }
 
         // Enemy
-        const speedMs = s.hidden ? 700 : 320;
+        const baseSpeed = enemySpeedRef.current;
+        const speedMs = s.hidden ? baseSpeed * 2.2 : baseSpeed;
         if (now - lastEnemyRef.current > speedMs) {
           const step = nextStepToward(s.enemy, s.player, s.walls);
           if (step) s.enemy = step;
