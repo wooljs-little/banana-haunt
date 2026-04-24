@@ -34,7 +34,6 @@ class AudioEngine {
       this.master.gain.value = 0.7;
       this.master.connect(this.ctx.destination);
 
-      // Buses (no convolver - too heavy on mobile)
       this.bgmGain = this.ctx.createGain();
       this.bgmGain.gain.value = 0.15;
       this.bgmGain.connect(this.master);
@@ -68,14 +67,12 @@ class AudioEngine {
       this.started = true;
     } catch (e) {
       console.error("AudioEngine start failed:", e);
-      // mark started anyway so the game can run silently
       this.started = true;
     }
   }
 
   startBGM() {
     if (!this.ctx || !this.bgmGain) return;
-    // Just 2 oscillators - lighter
     const freqs = [110, 164.81];
     freqs.forEach((f, i) => {
       const osc = this.ctx!.createOscillator();
@@ -101,7 +98,6 @@ class AudioEngine {
 
   startProximity() {
     if (!this.ctx || !this.proximityGain) return;
-    // Short 1s noise loop - lighter memory
     const buf = this.ctx.createBuffer(
       1,
       this.ctx.sampleRate,
@@ -183,6 +179,29 @@ class AudioEngine {
     });
   }
 
+  playItem(kind: ItemKind) {
+    if (!this.ctx || !this.sfxGain) return;
+    const t = this.ctx.currentTime;
+    const presets: Record<ItemKind, number[]> = {
+      heart: [523, 784, 1047],
+      slow: [600, 400, 250],
+      shield: [440, 660, 880, 660],
+      stun: [1500, 200, 1500, 200],
+    };
+    presets[kind].forEach((f, i) => {
+      const osc = this.ctx!.createOscillator();
+      const g = this.ctx!.createGain();
+      osc.type = kind === "stun" ? "square" : "sine";
+      osc.frequency.value = f;
+      g.gain.setValueAtTime(0.001, t + i * 0.06);
+      g.gain.linearRampToValueAtTime(0.22, t + i * 0.06 + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.06 + 0.3);
+      osc.connect(g).connect(this.sfxGain!);
+      osc.start(t + i * 0.06);
+      osc.stop(t + i * 0.06 + 0.35);
+    });
+  }
+
   playGameOver() {
     if (!this.ctx || !this.sfxGain) return;
     const t = this.ctx.currentTime;
@@ -249,7 +268,7 @@ class AudioEngine {
 }
 
 // ============================================================================
-// Game (lighter: 18x12 grid, smaller canvas)
+// Game
 // ============================================================================
 
 const TILE = 28;
@@ -261,20 +280,25 @@ const H = TILE * ROWS;
 type Vec = { x: number; y: number };
 
 export type EnemyKind = "banana" | "apple" | "chicken" | "fish";
+export type ItemKind = "heart" | "slow" | "shield" | "stun";
 
 export interface Enemy {
   kind: EnemyKind;
   pos: Vec;
   lastMoveAt: number;
-  // for fish: cooldown until next teleport
   nextTeleport?: number;
 }
 
+export interface Item {
+  kind: ItemKind;
+  pos: Vec;
+}
+
 const ENEMY_BASE_SPEED: Record<EnemyKind, number> = {
-  banana: 1.0, // 1.0x base
-  apple: 1.6, // slow patroller
-  chicken: 0.9, // jittery, slightly faster
-  fish: 0.55, // very fast
+  banana: 1.0,
+  apple: 1.6,
+  chicken: 0.9,
+  fish: 0.55,
 };
 
 const ENEMY_LABEL: Record<EnemyKind, string> = {
@@ -284,81 +308,68 @@ const ENEMY_LABEL: Record<EnemyKind, string> = {
   fish: "🐟 高速サカナ",
 };
 
+const ITEM_LABEL: Record<ItemKind, string> = {
+  heart: "💚 ライフ",
+  slow: "⏱️ 鈍化",
+  shield: "🛡️ シールド",
+  stun: "⚡ スタン",
+};
+
+const ITEM_EMOJI: Record<ItemKind, string> = {
+  heart: "💚",
+  slow: "⏱️",
+  shield: "🛡️",
+  stun: "⚡",
+};
+
 export interface Difficulty {
   id: string;
   label: string;
   apples: number;
-  enemySpeedMs: number; // base for banana
+  enemySpeedMs: number;
   enemies: Partial<Record<EnemyKind, number>>;
+  items?: number; // total beneficial items spawned
 }
 
+// 10 finely-tuned difficulty levels + custom
 export const DIFFICULTIES: Difficulty[] = [
-  {
-    id: "easy",
-    label: "イージー 🍮",
-    apples: 3,
-    enemySpeedMs: 520,
-    enemies: { banana: 1 },
-  },
-  {
-    id: "normal",
-    label: "ノーマル 🍌",
-    apples: 5,
-    enemySpeedMs: 360,
-    enemies: { banana: 1, apple: 1 },
-  },
-  {
-    id: "hard",
-    label: "ハード 🔥",
-    apples: 7,
-    enemySpeedMs: 260,
-    enemies: { banana: 2, apple: 1, chicken: 1 },
-  },
-  {
-    id: "nightmare",
-    label: "ナイトメア 💀",
-    apples: 10,
-    enemySpeedMs: 180,
-    enemies: { banana: 2, apple: 2, chicken: 2, fish: 1 },
-  },
-  {
-    id: "hell",
-    label: "地獄 👹",
-    apples: 15,
-    enemySpeedMs: 130,
-    enemies: { banana: 3, apple: 3, chicken: 3, fish: 2 },
-  },
-  {
-    id: "chaos",
-    label: "カオス 🌀",
-    apples: 20,
-    enemySpeedMs: 100,
-    enemies: { banana: 4, apple: 4, chicken: 4, fish: 3 },
-  },
-  {
-    id: "custom",
-    label: "カスタム ⚙️",
-    apples: 5,
-    enemySpeedMs: 320,
-    enemies: { banana: 1 },
-  },
+  { id: "lv1",  label: "Lv1 ほのぼの 🍮",     apples: 3,  enemySpeedMs: 600, enemies: { banana: 1 },                                  items: 4 },
+  { id: "lv2",  label: "Lv2 やさしい 🌱",     apples: 4,  enemySpeedMs: 520, enemies: { banana: 1 },                                  items: 4 },
+  { id: "lv3",  label: "Lv3 おてがる 🍌",     apples: 5,  enemySpeedMs: 440, enemies: { banana: 1, apple: 1 },                        items: 3 },
+  { id: "lv4",  label: "Lv4 ふつう 😬",        apples: 6,  enemySpeedMs: 380, enemies: { banana: 1, apple: 1 },                        items: 3 },
+  { id: "lv5",  label: "Lv5 ちょい難 🔥",     apples: 7,  enemySpeedMs: 320, enemies: { banana: 2, apple: 1 },                        items: 3 },
+  { id: "lv6",  label: "Lv6 ハード 🔥🔥",     apples: 8,  enemySpeedMs: 270, enemies: { banana: 2, apple: 1, chicken: 1 },             items: 2 },
+  { id: "lv7",  label: "Lv7 鬼ハード 👺",     apples: 10, enemySpeedMs: 230, enemies: { banana: 2, apple: 2, chicken: 1, fish: 1 },     items: 2 },
+  { id: "lv8",  label: "Lv8 ナイトメア 💀",   apples: 12, enemySpeedMs: 190, enemies: { banana: 3, apple: 2, chicken: 2, fish: 1 },     items: 2 },
+  { id: "lv9",  label: "Lv9 地獄 👹",          apples: 15, enemySpeedMs: 150, enemies: { banana: 3, apple: 3, chicken: 3, fish: 2 },     items: 1 },
+  { id: "lv10", label: "Lv10 カオス 🌀",       apples: 20, enemySpeedMs: 110, enemies: { banana: 4, apple: 4, chicken: 4, fish: 3 },     items: 1 },
+  { id: "custom", label: "カスタム ⚙️",         apples: 5,  enemySpeedMs: 320, enemies: { banana: 1 },                                   items: 3 },
 ];
 
 interface GameState {
   player: Vec;
   enemies: Enemy[];
   apples: Vec[];
+  items: Item[];
   walls: Set<string>;
   collected: number;
   status: "playing" | "won" | "lost";
   hidden: boolean;
   totalApples: number;
+  // power-ups
+  lives: number;
+  shieldUntil: number;   // ms timestamp
+  slowUntil: number;     // enemies move slower
+  stunUntil: number;     // enemies frozen
+  lastMessage: string;
 }
 
 function generateLevel(
   appleCount: number,
-  enemyCounts: Partial<Record<EnemyKind, number>>,
+  enemyCounts: Partial<Record<EnemyKind, number>> | undefined,
+  itemCount: number,
 ): GameState {
+  const counts = enemyCounts ?? {};
   const walls = new Set<string>();
   for (let x = 0; x < COLS; x++) {
     walls.add(`${x},0`);
@@ -396,9 +407,22 @@ function generateLevel(
     apples.push(c);
   }
 
+  // Items: distribute roughly evenly among kinds
+  const items: Item[] = [];
+  const itemKinds: ItemKind[] = ["heart", "slow", "shield", "stun"];
+  let iAttempts = 0;
+  while (items.length < itemCount && iAttempts++ < 1500) {
+    const c = freeCell();
+    if (Math.abs(c.x - player.x) + Math.abs(c.y - player.y) < 3) continue;
+    if (apples.some((a) => a.x === c.x && a.y === c.y)) continue;
+    if (items.some((it) => it.pos.x === c.x && it.pos.y === c.y)) continue;
+    const kind = itemKinds[items.length % itemKinds.length];
+    items.push({ kind, pos: c });
+  }
+
   const enemies: Enemy[] = [];
-  (Object.keys(enemyCounts) as EnemyKind[]).forEach((kind) => {
-    const n = enemyCounts[kind] ?? 0;
+  (Object.keys(counts) as EnemyKind[]).forEach((kind) => {
+    const n = counts[kind] ?? 0;
     for (let i = 0; i < n; i++) {
       let pos = freeCell();
       for (let j = 0; j < 60; j++) {
@@ -413,11 +437,17 @@ function generateLevel(
     player,
     enemies,
     apples,
+    items,
     walls,
     collected: 0,
     status: "playing",
     hidden: false,
     totalApples: apples.length,
+    lives: 1,
+    shieldUntil: 0,
+    slowUntil: 0,
+    stunUntil: 0,
+    lastMessage: "",
   };
 }
 
@@ -472,39 +502,38 @@ function stepEnemy(
   player: Vec,
   walls: Set<string>,
   now: number,
+  hidden: boolean,
 ): Vec {
   const k = enemy.kind;
+  // When player is hidden, enemies can't see them — wander randomly.
+  if (hidden) {
+    return randomFreeNeighbor(enemy.pos, walls) ?? enemy.pos;
+  }
   if (k === "banana") {
     return nextStepToward(enemy.pos, player, walls) ?? enemy.pos;
   }
   if (k === "apple") {
-    // Mostly random patrol, 30% chance to chase
     if (Math.random() < 0.3) {
       return nextStepToward(enemy.pos, player, walls) ?? enemy.pos;
     }
     return randomFreeNeighbor(enemy.pos, walls) ?? enemy.pos;
   }
   if (k === "chicken") {
-    // Erratic: 60% random, 40% chase
     if (Math.random() < 0.4) {
       return nextStepToward(enemy.pos, player, walls) ?? enemy.pos;
     }
     return randomFreeNeighbor(enemy.pos, walls) ?? enemy.pos;
   }
   if (k === "fish") {
-    // Very fast chaser, occasionally teleports near player
     if (
       enemy.nextTeleport !== undefined &&
       now > enemy.nextTeleport &&
       Math.random() < 0.3
     ) {
       enemy.nextTeleport = now + 4000 + Math.random() * 3000;
-      // teleport to a free cell within 5 tiles of player
       for (let i = 0; i < 30; i++) {
-        const tx =
-          player.x + Math.floor((Math.random() - 0.5) * 10);
-        const ty =
-          player.y + Math.floor((Math.random() - 0.5) * 10);
+        const tx = player.x + Math.floor((Math.random() - 0.5) * 10);
+        const ty = player.y + Math.floor((Math.random() - 0.5) * 10);
         if (
           tx > 0 &&
           tx < COLS - 1 &&
@@ -525,31 +554,32 @@ function stepEnemy(
 export function BananaHorrorGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<AudioEngine | null>(null);
-  const [difficultyId, setDifficultyId] = useState<string>("normal");
+  const [difficultyId, setDifficultyId] = useState<string>("lv4");
   const [customApples, setCustomApples] = useState(5);
   const [customSpeed, setCustomSpeed] = useState(320);
+  const [customItems, setCustomItems] = useState(3);
   const [customEnemies, setCustomEnemies] = useState<
     Record<EnemyKind, number>
   >({ banana: 1, apple: 0, chicken: 0, fish: 0 });
 
   const getActiveDifficulty = useCallback((): Difficulty => {
-    const d = DIFFICULTIES.find((x) => x.id === difficultyId) ?? DIFFICULTIES[1];
+    const d = DIFFICULTIES.find((x) => x.id === difficultyId) ?? DIFFICULTIES[3];
     if (d.id === "custom") {
       return {
         ...d,
         apples: customApples,
         enemySpeedMs: customSpeed,
         enemies: customEnemies,
+        items: customItems,
       };
     }
     return d;
-  }, [difficultyId, customApples, customSpeed, customEnemies]);
+  }, [difficultyId, customApples, customSpeed, customEnemies, customItems]);
 
-  const stateRef = useRef<GameState>(generateLevel(5, { banana: 1 }));
+  const stateRef = useRef<GameState>(generateLevel(5, { banana: 1 }, 3));
   const enemySpeedRef = useRef(320);
   const keysRef = useRef<Record<string, boolean>>({});
   const lastMoveRef = useRef(0);
-  const lastEnemyRef = useRef(0);
 
   const [started, setStarted] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -569,18 +599,18 @@ export function BananaHorrorGame() {
     setStarting(true);
     try {
       const d = getActiveDifficulty();
-      stateRef.current = generateLevel(d.apples, d.enemies);
+      stateRef.current = generateLevel(d.apples, d.enemies, d.items ?? 3);
       enemySpeedRef.current = d.enemySpeedMs;
       if (!engineRef.current) engineRef.current = new AudioEngine();
       await engineRef.current.start();
       setStarted(true);
-      const enemyTypes = (Object.keys(d.enemies) as EnemyKind[])
-        .filter((k) => (d.enemies[k] ?? 0) > 0)
+      const enemyTypes = (Object.keys(d.enemies ?? {}) as EnemyKind[])
+        .filter((k) => (d.enemies?.[k] ?? 0) > 0)
         .map((k) => ENEMY_LABEL[k])
         .join("、");
       setTimeout(() => {
         engineRef.current?.speak(
-          `${enemyTypes}が、追いかけてくる。りんごを${d.apples}つ集めなさい。`,
+          `${enemyTypes || "敵"}が、追いかけてくる。りんごを${d.apples}つ集めなさい。`,
         );
       }, 300);
     } catch (e) {
@@ -602,12 +632,19 @@ export function BananaHorrorGame() {
   // Keyboard
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      keysRef.current[e.key.toLowerCase()] = true;
-      if (
-        e.key === " " ||
-        e.key.startsWith("Arrow")
-      ) {
+      const key = e.key.toLowerCase();
+      keysRef.current[key] = true;
+      if (e.key === " " || e.key.startsWith("Arrow")) {
         e.preventDefault();
+      }
+      // Toggle hide on Shift press (edge-trigger, not hold)
+      if (key === "shift") {
+        const s = stateRef.current;
+        if (s.status === "playing") {
+          s.hidden = !s.hidden;
+          s.lastMessage = s.hidden ? "🫥 隠れた（動けない）" : "🚶 出た";
+          rerender();
+        }
       }
     };
     const up = (e: KeyboardEvent) => {
@@ -619,16 +656,19 @@ export function BananaHorrorGame() {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
-  }, []);
+  }, [rerender]);
 
-  // Touch controls (mobile)
+  // Player movement + pickups
   const move = useCallback((dx: number, dy: number) => {
     const s = stateRef.current;
     if (s.status !== "playing") return;
+    if (s.hidden) return; // 隠れている間は動けない
     const nx = s.player.x + dx;
     const ny = s.player.y + dy;
     if (s.walls.has(`${nx},${ny}`)) return;
     s.player = { x: nx, y: ny };
+
+    // Apple pickup
     const idx = s.apples.findIndex((a) => a.x === nx && a.y === ny);
     if (idx >= 0) {
       s.apples.splice(idx, 1);
@@ -639,8 +679,31 @@ export function BananaHorrorGame() {
         engineRef.current?.playWin();
         engineRef.current?.speak("脱出、成功。");
       }
-      rerender();
     }
+
+    // Item pickup
+    const iIdx = s.items.findIndex((it) => it.pos.x === nx && it.pos.y === ny);
+    if (iIdx >= 0) {
+      const item = s.items[iIdx];
+      s.items.splice(iIdx, 1);
+      const now = performance.now();
+      engineRef.current?.playItem(item.kind);
+      if (item.kind === "heart") {
+        s.lives++;
+        s.lastMessage = "💚 ライフ +1";
+      } else if (item.kind === "slow") {
+        s.slowUntil = now + 6000;
+        s.lastMessage = "⏱️ 敵が6秒間鈍化";
+      } else if (item.kind === "shield") {
+        s.shieldUntil = now + 8000;
+        s.lastMessage = "🛡️ 8秒間シールド";
+      } else if (item.kind === "stun") {
+        s.stunUntil = now + 3000;
+        s.lastMessage = "⚡ 敵が3秒間停止";
+      }
+    }
+
+    rerender();
   }, [rerender]);
 
   // Game loop
@@ -654,7 +717,6 @@ export function BananaHorrorGame() {
     let raf = 0;
     let lastFrame = 0;
     const tick = (now: number) => {
-      // Cap to ~30fps for performance
       if (now - lastFrame < 33) {
         raf = requestAnimationFrame(tick);
         return;
@@ -664,8 +726,8 @@ export function BananaHorrorGame() {
       const s = stateRef.current;
 
       if (s.status === "playing") {
-        // Player input (keyboard)
-        if (now - lastMoveRef.current > 140) {
+        // Player input
+        if (now - lastMoveRef.current > 140 && !s.hidden) {
           let dx = 0, dy = 0;
           const k = keysRef.current;
           if (k["arrowup"] || k["w"]) dy = -1;
@@ -676,35 +738,53 @@ export function BananaHorrorGame() {
             move(dx, dy);
             lastMoveRef.current = now;
           }
-          s.hidden = !!k["shift"];
         }
 
-        // Enemies — each enemy has its own movement timer based on its kind
-        const baseSpeed = enemySpeedRef.current;
-        for (const enemy of s.enemies) {
-          const kindMul = ENEMY_BASE_SPEED[enemy.kind];
-          const speedMs =
-            baseSpeed * kindMul * (s.hidden ? 2.0 : 1);
-          if (now - enemy.lastMoveAt > speedMs) {
-            const next = stepEnemy(enemy, s.player, s.walls, now);
-            enemy.pos = next;
-            enemy.lastMoveAt = now;
-            if (enemy.pos.x === s.player.x && enemy.pos.y === s.player.y) {
-              s.status = "lost";
-              engineRef.current?.playGameOver();
-              engineRef.current?.speak(
-                `${ENEMY_LABEL[enemy.kind]}に、つかまった。`,
-              );
-              rerender();
-              break;
+        const stunned = now < s.stunUntil;
+        const slowed = now < s.slowUntil;
+        const shielded = now < s.shieldUntil;
+
+        // Enemies
+        if (!stunned) {
+          const baseSpeed = enemySpeedRef.current;
+          for (const enemy of s.enemies) {
+            const kindMul = ENEMY_BASE_SPEED[enemy.kind];
+            const speedMs =
+              baseSpeed * kindMul * (slowed ? 1.8 : 1) * (s.hidden ? 1.5 : 1);
+            if (now - enemy.lastMoveAt > speedMs) {
+              const next = stepEnemy(enemy, s.player, s.walls, now, s.hidden);
+              enemy.pos = next;
+              enemy.lastMoveAt = now;
+              if (enemy.pos.x === s.player.x && enemy.pos.y === s.player.y) {
+                if (shielded) {
+                  s.shieldUntil = 0;
+                  s.lastMessage = "🛡️ シールドが砕けた！";
+                  // bump enemy back to a neighbor
+                  const back = randomFreeNeighbor(enemy.pos, s.walls);
+                  if (back) enemy.pos = back;
+                } else if (s.lives > 1) {
+                  s.lives--;
+                  s.shieldUntil = now + 1500; // brief invuln
+                  s.lastMessage = `💔 ライフ -1（残${s.lives}）`;
+                  const back = randomFreeNeighbor(enemy.pos, s.walls);
+                  if (back) enemy.pos = back;
+                } else {
+                  s.status = "lost";
+                  engineRef.current?.playGameOver();
+                  engineRef.current?.speak(
+                    `${ENEMY_LABEL[enemy.kind]}に、つかまった。`,
+                  );
+                  rerender();
+                  break;
+                }
+                rerender();
+              }
             }
           }
         }
 
-        // Proximity audio — use closest enemy
-        let nearestDx = 99,
-          nearestDy = 99,
-          nearestDist = 99;
+        // Proximity audio
+        let nearestDx = 99, nearestDist = 99;
         for (const enemy of s.enemies) {
           const dx = enemy.pos.x - s.player.x;
           const dy = enemy.pos.y - s.player.y;
@@ -712,21 +792,17 @@ export function BananaHorrorGame() {
           if (dist < nearestDist) {
             nearestDist = dist;
             nearestDx = dx;
-            nearestDy = dy;
           }
         }
         const level = Math.max(0, 1 - nearestDist / 12);
         const pan = Math.max(-1, Math.min(1, nearestDx / 7));
-        // suppress unused dy warning
-        void nearestDy;
-        engineRef.current?.setProximity(level * (s.hidden ? 0.4 : 1), pan);
+        engineRef.current?.setProximity(level * (s.hidden ? 0.3 : 1), pan);
       }
 
-      // Render (simplified)
+      // ===== Render =====
       ctx.fillStyle = "#0a0805";
       ctx.fillRect(0, 0, W, H);
 
-      // Floor + walls in one pass
       for (let y = 0; y < ROWS; y++) {
         for (let x = 0; x < COLS; x++) {
           if (s.walls.has(`${x},${y}`)) {
@@ -744,33 +820,65 @@ export function BananaHorrorGame() {
       ctx.fillStyle = "#e63946";
       s.apples.forEach((a) => {
         ctx.beginPath();
-        ctx.arc(
-          a.x * TILE + TILE / 2,
-          a.y * TILE + TILE / 2,
-          8 * pulse,
-          0,
-          Math.PI * 2,
-        );
+        ctx.arc(a.x * TILE + TILE / 2, a.y * TILE + TILE / 2, 8 * pulse, 0, Math.PI * 2);
         ctx.fill();
+      });
+
+      // Items (emoji)
+      ctx.font = "18px serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      const ipulse = 1 + Math.sin(now / 200) * 0.15;
+      s.items.forEach((it) => {
+        const ix = it.pos.x * TILE + TILE / 2;
+        const iy = it.pos.y * TILE + TILE / 2;
+        // glow
+        const g = ctx.createRadialGradient(ix, iy, 2, ix, iy, 16);
+        g.addColorStop(0, "rgba(255,255,200,0.4)");
+        g.addColorStop(1, "rgba(255,255,200,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(ix, iy, 16, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.save();
+        ctx.translate(ix, iy);
+        ctx.scale(ipulse, ipulse);
+        ctx.fillStyle = "#fff";
+        ctx.fillText(ITEM_EMOJI[it.kind], 0, 0);
+        ctx.restore();
       });
 
       // Player
       const px = s.player.x * TILE + TILE / 2;
       const py = s.player.y * TILE + TILE / 2;
-      ctx.fillStyle = s.hidden ? "#555" : "#7dd3fc";
+      const shieldedNow = performance.now() < s.shieldUntil;
+      if (shieldedNow) {
+        ctx.strokeStyle = "rgba(120,200,255,0.8)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(px, py, 13 + Math.sin(now / 100) * 1.5, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.fillStyle = s.hidden ? "#444" : "#7dd3fc";
+      ctx.globalAlpha = s.hidden ? 0.45 : 1;
       ctx.beginPath();
       ctx.arc(px, py, 9, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = "#000";
-      ctx.fillRect(px - 4, py - 2, 2, 2);
-      ctx.fillRect(px + 2, py - 2, 2, 2);
+      ctx.globalAlpha = 1;
+      if (!s.hidden) {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(px - 4, py - 2, 2, 2);
+        ctx.fillRect(px + 2, py - 2, 2, 2);
+      }
 
       // Enemies
+      const stunnedNow = performance.now() < s.stunUntil;
       s.enemies.forEach((enemy) => {
         const ex = enemy.pos.x * TILE + TILE / 2;
         const ey = enemy.pos.y * TILE + TILE / 2;
         ctx.save();
         ctx.translate(ex, ey);
+        if (stunnedNow) ctx.globalAlpha = 0.55;
         if (enemy.kind === "banana") {
           ctx.rotate(-0.4);
           ctx.fillStyle = "#f4d03f";
@@ -797,90 +905,62 @@ export function BananaHorrorGame() {
           ctx.arc(6, -1, 1, 0, Math.PI * 2);
           ctx.fill();
         } else if (enemy.kind === "apple") {
-          // Killer apple: green w/ angry face
           ctx.fillStyle = "#7cb342";
           ctx.beginPath();
           ctx.arc(0, 0, 10, 0, Math.PI * 2);
           ctx.fill();
           ctx.fillStyle = "#3d2817";
           ctx.fillRect(-1, -12, 2, 4);
-          // angry eyes
           ctx.strokeStyle = "#000";
           ctx.lineWidth = 2;
           ctx.beginPath();
-          ctx.moveTo(-5, -3);
-          ctx.lineTo(-1, -1);
-          ctx.moveTo(5, -3);
-          ctx.lineTo(1, -1);
+          ctx.moveTo(-5, -3); ctx.lineTo(-1, -1);
+          ctx.moveTo(5, -3); ctx.lineTo(1, -1);
           ctx.stroke();
-          // jagged mouth
           ctx.fillStyle = "#000";
           ctx.beginPath();
-          ctx.moveTo(-4, 4);
-          ctx.lineTo(-2, 2);
-          ctx.lineTo(0, 4);
-          ctx.lineTo(2, 2);
-          ctx.lineTo(4, 4);
-          ctx.lineTo(2, 6);
-          ctx.lineTo(0, 5);
-          ctx.lineTo(-2, 6);
+          ctx.moveTo(-4, 4); ctx.lineTo(-2, 2); ctx.lineTo(0, 4);
+          ctx.lineTo(2, 2); ctx.lineTo(4, 4); ctx.lineTo(2, 6);
+          ctx.lineTo(0, 5); ctx.lineTo(-2, 6);
           ctx.closePath();
           ctx.fill();
         } else if (enemy.kind === "chicken") {
-          // Crazy chicken: white body, red comb, jittering
-          const jitter = (Math.random() - 0.5) * 1.5;
+          const jitter = stunnedNow ? 0 : (Math.random() - 0.5) * 1.5;
           ctx.translate(jitter, jitter);
           ctx.fillStyle = "#f5f5f5";
           ctx.beginPath();
           ctx.ellipse(0, 1, 10, 8, 0, 0, Math.PI * 2);
           ctx.fill();
-          // head
           ctx.beginPath();
           ctx.arc(6, -4, 5, 0, Math.PI * 2);
           ctx.fill();
-          // red comb
           ctx.fillStyle = "#e74c3c";
           ctx.beginPath();
           ctx.arc(6, -8, 2, 0, Math.PI * 2);
           ctx.arc(8, -7, 1.5, 0, Math.PI * 2);
           ctx.fill();
-          // beak
           ctx.fillStyle = "#f39c12";
           ctx.beginPath();
-          ctx.moveTo(10, -3);
-          ctx.lineTo(13, -2);
-          ctx.lineTo(10, -1);
+          ctx.moveTo(10, -3); ctx.lineTo(13, -2); ctx.lineTo(10, -1);
           ctx.closePath();
           ctx.fill();
-          // crazy eye
           ctx.fillStyle = "#fff";
           ctx.beginPath();
           ctx.arc(7, -5, 2, 0, Math.PI * 2);
           ctx.fill();
           ctx.fillStyle = "#000";
           ctx.beginPath();
-          ctx.arc(
-            7 + Math.cos(now / 80) * 0.8,
-            -5 + Math.sin(now / 80) * 0.8,
-            1,
-            0,
-            Math.PI * 2,
-          );
+          ctx.arc(7 + Math.cos(now / 80) * 0.8, -5 + Math.sin(now / 80) * 0.8, 1, 0, Math.PI * 2);
           ctx.fill();
         } else if (enemy.kind === "fish") {
-          // Fast fish: blue body, sharp teeth
           ctx.fillStyle = "#3498db";
           ctx.beginPath();
           ctx.ellipse(0, 0, 11, 5, 0, 0, Math.PI * 2);
           ctx.fill();
-          // tail
           ctx.beginPath();
-          ctx.moveTo(-10, 0);
-          ctx.lineTo(-15, -5);
-          ctx.lineTo(-15, 5);
+          ctx.moveTo(-10, 0); ctx.lineTo(-15, -5); ctx.lineTo(-15, 5);
           ctx.closePath();
           ctx.fill();
-          // eye
           ctx.fillStyle = "#fff";
           ctx.beginPath();
           ctx.arc(5, -1, 2, 0, Math.PI * 2);
@@ -889,23 +969,29 @@ export function BananaHorrorGame() {
           ctx.beginPath();
           ctx.arc(5, -1, 1, 0, Math.PI * 2);
           ctx.fill();
-          // teeth
           ctx.strokeStyle = "#fff";
           ctx.lineWidth = 1;
           ctx.beginPath();
-          ctx.moveTo(8, 2);
-          ctx.lineTo(9, 4);
-          ctx.lineTo(10, 2);
-          ctx.lineTo(11, 4);
+          ctx.moveTo(8, 2); ctx.lineTo(9, 4); ctx.lineTo(10, 2); ctx.lineTo(11, 4);
           ctx.stroke();
+        }
+        // ⚡ stun marker
+        if (stunnedNow) {
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = "#ffeb3b";
+          ctx.font = "12px serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText("⚡", 0, -14);
         }
         ctx.restore();
       });
 
-      // Vignette
-      const grad = ctx.createRadialGradient(px, py, 30, px, py, 220);
-      grad.addColorStop(0, "rgba(0,0,0,0)");
-      grad.addColorStop(1, "rgba(0,0,0,0.8)");
+      // Vignette — darker when hidden
+      const vignetteRadius = s.hidden ? 110 : 220;
+      const grad = ctx.createRadialGradient(px, py, 30, px, py, vignetteRadius);
+      grad.addColorStop(0, s.hidden ? "rgba(0,0,0,0.2)" : "rgba(0,0,0,0)");
+      grad.addColorStop(1, s.hidden ? "rgba(0,0,0,0.95)" : "rgba(0,0,0,0.8)");
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, W, H);
 
@@ -917,17 +1003,19 @@ export function BananaHorrorGame() {
 
   const reset = () => {
     const d = getActiveDifficulty();
-    stateRef.current = generateLevel(d.apples, d.enemies);
+    stateRef.current = generateLevel(d.apples, d.enemies, d.items ?? 3);
     enemySpeedRef.current = d.enemySpeedMs;
     rerender();
   };
 
-  const backToMenu = () => {
-    setStarted(false);
-  };
+  const backToMenu = () => setStarted(false);
 
   const s = stateRef.current;
   const activeDiff = getActiveDifficulty();
+  const nowMs = typeof performance !== "undefined" ? performance.now() : 0;
+  const buffShield = Math.max(0, s.shieldUntil - nowMs);
+  const buffSlow = Math.max(0, s.slowUntil - nowMs);
+  const buffStun = Math.max(0, s.stunUntil - nowMs);
 
   return (
     <div className="min-h-screen w-full flex flex-col items-center justify-start gap-3 p-3 bg-background text-foreground">
@@ -936,8 +1024,7 @@ export function BananaHorrorGame() {
           className="text-2xl md:text-4xl font-black tracking-wider"
           style={{
             color: "#f4d03f",
-            textShadow:
-              "2px 2px 0 #c0392b, 4px 4px 0 #1a1a1a",
+            textShadow: "2px 2px 0 #c0392b, 4px 4px 0 #1a1a1a",
             fontFamily: "'Courier New', monospace",
           }}
         >
@@ -951,33 +1038,24 @@ export function BananaHorrorGame() {
       {!started ? (
         <div
           className="flex flex-col gap-3 p-4 rounded-lg border-2 w-full max-w-md"
-          style={{
-            borderColor: "#5a2a2a",
-            background: "rgba(0,0,0,0.4)",
-          }}
+          style={{ borderColor: "#5a2a2a", background: "rgba(0,0,0,0.4)" }}
         >
-          <h2
-            className="text-sm font-bold font-mono"
-            style={{ color: "#f4d03f" }}
-          >
-            🎮 難易度を選択
+          <h2 className="text-sm font-bold font-mono" style={{ color: "#f4d03f" }}>
+            🎮 難易度を選択（Lv1〜Lv10）
           </h2>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-2 max-h-[55vh] overflow-y-auto pr-1">
             {DIFFICULTIES.map((d) => (
               <button
                 key={d.id}
                 onClick={() => setDifficultyId(d.id)}
-                className="px-3 py-2 rounded text-xs font-bold font-mono transition-all"
+                className="px-2 py-2 rounded text-[11px] font-bold font-mono transition-all text-left"
                 style={{
                   background:
                     difficultyId === d.id
                       ? "linear-gradient(135deg, #f4d03f, #c0392b)"
                       : "rgba(90,42,42,0.5)",
                   color: difficultyId === d.id ? "#1a0a0a" : "#f4d03f",
-                  border:
-                    difficultyId === d.id
-                      ? "2px solid #f4d03f"
-                      : "1px solid #5a2a2a",
+                  border: difficultyId === d.id ? "2px solid #f4d03f" : "1px solid #5a2a2a",
                 }}
               >
                 {d.label}
@@ -986,13 +1064,10 @@ export function BananaHorrorGame() {
                     "自分で設定"
                   ) : (
                     <>
-                      🍎{d.apples}・
+                      🍎{d.apples}・🎁{d.items ?? 0}・
                       {(Object.keys(d.enemies) as EnemyKind[])
                         .filter((k) => (d.enemies[k] ?? 0) > 0)
-                        .map(
-                          (k) =>
-                            `${ENEMY_LABEL[k].split(" ")[0]}${d.enemies[k]}`,
-                        )
+                        .map((k) => `${ENEMY_LABEL[k].split(" ")[0]}${d.enemies[k]}`)
                         .join(" ")}
                     </>
                   )}
@@ -1001,25 +1076,30 @@ export function BananaHorrorGame() {
             ))}
           </div>
 
+          <div className="text-[10px] opacity-70 font-mono p-2 rounded" style={{ background: "rgba(0,0,0,0.3)" }}>
+            <div className="font-bold mb-0.5" style={{ color: "#f4d03f" }}>🎁 アイテム</div>
+            💚 ライフ +1 ／ 🛡️ 8秒シールド ／ ⏱️ 敵を6秒鈍化 ／ ⚡ 敵を3秒停止
+          </div>
+
           {difficultyId === "custom" && (
-            <div
-              className="flex flex-col gap-2 p-3 rounded font-mono text-xs"
-              style={{ background: "rgba(0,0,0,0.4)" }}
-            >
+            <div className="flex flex-col gap-2 p-3 rounded font-mono text-xs" style={{ background: "rgba(0,0,0,0.4)" }}>
               <div>
                 <div className="flex justify-between">
                   <span>🍎 りんごの数</span>
                   <span style={{ color: "#f4d03f" }}>{customApples}個</span>
                 </div>
-                <input
-                  type="range"
-                  min={1}
-                  max={20}
-                  step={1}
-                  value={customApples}
+                <input type="range" min={1} max={20} step={1} value={customApples}
                   onChange={(e) => setCustomApples(parseInt(e.target.value))}
-                  className="w-full accent-yellow-400"
-                />
+                  className="w-full accent-yellow-400" />
+              </div>
+              <div>
+                <div className="flex justify-between">
+                  <span>🎁 アイテム数</span>
+                  <span style={{ color: "#f4d03f" }}>{customItems}個</span>
+                </div>
+                <input type="range" min={0} max={10} step={1} value={customItems}
+                  onChange={(e) => setCustomItems(parseInt(e.target.value))}
+                  className="w-full accent-yellow-400" />
               </div>
               <div>
                 <div className="flex justify-between">
@@ -1028,24 +1108,14 @@ export function BananaHorrorGame() {
                     {Math.round((2000 / customSpeed) * 10) / 10}歩/秒
                   </span>
                 </div>
-                <input
-                  type="range"
-                  min={80}
-                  max={800}
-                  step={20}
-                  // Inverted: higher slider = faster (lower ms)
+                <input type="range" min={80} max={800} step={20}
                   value={880 - customSpeed}
-                  onChange={(e) =>
-                    setCustomSpeed(880 - parseInt(e.target.value))
-                  }
-                  className="w-full accent-yellow-400"
-                />
+                  onChange={(e) => setCustomSpeed(880 - parseInt(e.target.value))}
+                  className="w-full accent-yellow-400" />
                 <div className="flex justify-between text-[9px] opacity-60">
-                  <span>のろま</span>
-                  <span>俊敏</span>
+                  <span>のろま</span><span>俊敏</span>
                 </div>
               </div>
-
               <div className="border-t pt-2" style={{ borderColor: "#5a2a2a" }}>
                 <div className="text-[10px] mb-1.5 opacity-80">
                   👹 敵の数（合計0でも開始可・無敵モード）
@@ -1054,24 +1124,13 @@ export function BananaHorrorGame() {
                   <div key={kind} className="mb-1">
                     <div className="flex justify-between text-[10px]">
                       <span>{ENEMY_LABEL[kind]}</span>
-                      <span style={{ color: "#f4d03f" }}>
-                        {customEnemies[kind]}体
-                      </span>
+                      <span style={{ color: "#f4d03f" }}>{customEnemies[kind]}体</span>
                     </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={6}
-                      step={1}
-                      value={customEnemies[kind]}
-                      onChange={(e) =>
-                        setCustomEnemies((prev) => ({
-                          ...prev,
-                          [kind]: parseInt(e.target.value),
-                        }))
-                      }
-                      className="w-full accent-yellow-400"
-                    />
+                    <input type="range" min={0} max={6} step={1} value={customEnemies[kind]}
+                      onChange={(e) => setCustomEnemies((prev) => ({
+                        ...prev, [kind]: parseInt(e.target.value),
+                      }))}
+                      className="w-full accent-yellow-400" />
                   </div>
                 ))}
               </div>
@@ -1094,143 +1153,106 @@ export function BananaHorrorGame() {
       ) : (
         <div className="flex flex-col lg:flex-row gap-3 items-start w-full max-w-5xl">
           <div className="flex flex-col gap-2 flex-1 items-center">
-            <div
-              className="flex justify-between text-xs font-mono px-2 w-full"
-              style={{ maxWidth: W }}
-            >
+            <div className="flex flex-wrap justify-between gap-1 text-xs font-mono px-2 w-full" style={{ maxWidth: W }}>
               <span>🍎 {s.collected}/{s.totalApples}</span>
+              <span>💚 {s.lives}</span>
               <span style={{ color: "#f4d03f" }}>{activeDiff.label}</span>
-              <span>{s.hidden ? "🫥 隠れ" : "🚶"}</span>
+              <span>{s.hidden ? "🫥 隠れ中" : "🚶 行動中"}</span>
               <span>
-                {s.status === "won"
-                  ? "✨ クリア!"
-                  : s.status === "lost"
-                    ? "💀 ゲームオーバー"
-                    : "⚠️"}
+                {s.status === "won" ? "✨ クリア!" :
+                 s.status === "lost" ? "💀 ゲームオーバー" : "⚠️"}
               </span>
+            </div>
+            {/* Active buffs */}
+            <div className="flex gap-2 text-[10px] font-mono px-2 w-full" style={{ maxWidth: W }}>
+              {buffShield > 0 && <span className="text-cyan-300">🛡️ {(buffShield/1000).toFixed(1)}s</span>}
+              {buffSlow > 0 && <span className="text-blue-300">⏱️ {(buffSlow/1000).toFixed(1)}s</span>}
+              {buffStun > 0 && <span className="text-yellow-300">⚡ {(buffStun/1000).toFixed(1)}s</span>}
+              {s.lastMessage && <span className="opacity-70 ml-auto">{s.lastMessage}</span>}
             </div>
             <canvas
               ref={canvasRef}
               width={W}
               height={H}
               className="rounded border-2 max-w-full h-auto"
-              style={{
-                borderColor: "#5a2a2a",
-                imageRendering: "pixelated",
-              }}
+              style={{ borderColor: "#5a2a2a", imageRendering: "pixelated" }}
             />
             <div className="text-[10px] opacity-60 font-mono px-2 text-center">
-              矢印 / WASD: 移動 ・ Shift: 隠れる
+              矢印 / WASD: 移動 ・ Shift: 隠れる切替（隠れ中は動けないが見つからない）
             </div>
 
-            {/* Touch D-pad for mobile */}
+            {/* Touch D-pad */}
             <div className="grid grid-cols-3 gap-1 lg:hidden select-none touch-none">
               <div />
-              <button
-                onPointerDown={() => move(0, -1)}
-                className="w-12 h-12 rounded bg-yellow-400/20 border border-yellow-400/40 text-xl"
-              >
-                ↑
-              </button>
+              <button onPointerDown={() => move(0, -1)}
+                className="w-12 h-12 rounded bg-yellow-400/20 border border-yellow-400/40 text-xl">↑</button>
               <div />
-              <button
-                onPointerDown={() => move(-1, 0)}
-                className="w-12 h-12 rounded bg-yellow-400/20 border border-yellow-400/40 text-xl"
-              >
-                ←
-              </button>
+              <button onPointerDown={() => move(-1, 0)}
+                className="w-12 h-12 rounded bg-yellow-400/20 border border-yellow-400/40 text-xl">←</button>
               <button
                 onPointerDown={() => {
-                  stateRef.current.hidden = !stateRef.current.hidden;
+                  const st = stateRef.current;
+                  if (st.status !== "playing") return;
+                  st.hidden = !st.hidden;
+                  st.lastMessage = st.hidden ? "🫥 隠れた" : "🚶 出た";
                   rerender();
                 }}
-                className="w-12 h-12 rounded bg-red-500/20 border border-red-500/40 text-xs"
-              >
+                className="w-12 h-12 rounded bg-red-500/20 border border-red-500/40 text-xs">
                 {s.hidden ? "出る" : "隠れ"}
               </button>
-              <button
-                onPointerDown={() => move(1, 0)}
-                className="w-12 h-12 rounded bg-yellow-400/20 border border-yellow-400/40 text-xl"
-              >
-                →
-              </button>
+              <button onPointerDown={() => move(1, 0)}
+                className="w-12 h-12 rounded bg-yellow-400/20 border border-yellow-400/40 text-xl">→</button>
               <div />
-              <button
-                onPointerDown={() => move(0, 1)}
-                className="w-12 h-12 rounded bg-yellow-400/20 border border-yellow-400/40 text-xl"
-              >
-                ↓
-              </button>
+              <button onPointerDown={() => move(0, 1)}
+                className="w-12 h-12 rounded bg-yellow-400/20 border border-yellow-400/40 text-xl">↓</button>
               <div />
             </div>
 
             <div className="flex gap-2">
               {s.status !== "playing" && (
-                <button
-                  onClick={reset}
-                  className="px-4 py-2 rounded font-bold"
-                  style={{ background: "#f4d03f", color: "#1a0a0a" }}
-                >
+                <button onClick={reset} className="px-4 py-2 rounded font-bold"
+                  style={{ background: "#f4d03f", color: "#1a0a0a" }}>
                   ↻ もう一度
                 </button>
               )}
-              <button
-                onClick={backToMenu}
-                className="px-4 py-2 rounded font-bold text-xs"
-                style={{
-                  background: "rgba(90,42,42,0.6)",
-                  color: "#f4d03f",
-                  border: "1px solid #5a2a2a",
-                }}
-              >
+              <button onClick={backToMenu} className="px-4 py-2 rounded font-bold text-xs"
+                style={{ background: "rgba(90,42,42,0.6)", color: "#f4d03f", border: "1px solid #5a2a2a" }}>
                 ← 難易度選択
               </button>
             </div>
           </div>
 
-          {/* Mixer */}
-          <div
-            className="p-3 rounded-lg border-2 font-mono text-xs w-full lg:w-56"
-            style={{
-              borderColor: "#5a2a2a",
-              background: "rgba(0,0,0,0.4)",
-            }}
-          >
-            <h2 className="text-xs font-bold mb-2" style={{ color: "#f4d03f" }}>
-              🎛 ミキサー
-            </h2>
-            {(
-              [
-                ["master", "マスター"],
-                ["bgm", "BGM"],
-                ["drone", "ドローン"],
-                ["heart", "心拍"],
-                ["sfx", "SFX"],
-              ] as [keyof typeof mix, string][]
-            ).map(([k, label]) => (
+          {/* Mixer + Item legend */}
+          <div className="p-3 rounded-lg border-2 font-mono text-xs w-full lg:w-56"
+            style={{ borderColor: "#5a2a2a", background: "rgba(0,0,0,0.4)" }}>
+            <h2 className="text-xs font-bold mb-2" style={{ color: "#f4d03f" }}>🎛 ミキサー</h2>
+            {([
+              ["master", "マスター"],
+              ["bgm", "BGM"],
+              ["drone", "ドローン"],
+              ["heart", "心拍"],
+              ["sfx", "SFX"],
+            ] as [keyof typeof mix, string][]).map(([k, label]) => (
               <div key={k} className="mb-1.5">
                 <div className="flex justify-between text-[10px]">
                   <span>{label}</span>
                   <span>{Math.round(mix[k] * 100)}</span>
                 </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={mix[k]}
-                  onChange={(e) =>
-                    setMix((m) => ({ ...m, [k]: parseFloat(e.target.value) }))
-                  }
-                  className="w-full accent-yellow-400"
-                />
+                <input type="range" min={0} max={1} step={0.01} value={mix[k]}
+                  onChange={(e) => setMix((m) => ({ ...m, [k]: parseFloat(e.target.value) }))}
+                  className="w-full accent-yellow-400" />
               </div>
             ))}
+            <div className="mt-2 pt-2 border-t text-[10px] leading-relaxed" style={{ borderColor: "#5a2a2a" }}>
+              <div className="font-bold mb-1" style={{ color: "#f4d03f" }}>🎁 アイテム</div>
+              {(Object.keys(ITEM_LABEL) as ItemKind[]).map((k) => (
+                <div key={k}>{ITEM_LABEL[k]}</div>
+              ))}
+            </div>
             <button
               onClick={() => engineRef.current?.speak("テスト音声です。")}
-              className="mt-1 w-full py-1 rounded text-[10px] font-bold"
-              style={{ background: "#5a2a2a", color: "#f4d03f" }}
-            >
+              className="mt-2 w-full py-1 rounded text-[10px] font-bold"
+              style={{ background: "#5a2a2a", color: "#f4d03f" }}>
               🔊 TTSテスト
             </button>
           </div>
