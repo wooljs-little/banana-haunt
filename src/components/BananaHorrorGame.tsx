@@ -377,7 +377,20 @@ function nextStepToward(
 export function BananaHorrorGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<AudioEngine | null>(null);
-  const stateRef = useRef<GameState>(generateLevel());
+  const [difficultyId, setDifficultyId] = useState<string>("normal");
+  const [customApples, setCustomApples] = useState(5);
+  const [customSpeed, setCustomSpeed] = useState(320);
+
+  const getActiveDifficulty = useCallback((): Difficulty => {
+    const d = DIFFICULTIES.find((x) => x.id === difficultyId) ?? DIFFICULTIES[1];
+    if (d.id === "custom") {
+      return { ...d, apples: customApples, enemySpeedMs: customSpeed };
+    }
+    return d;
+  }, [difficultyId, customApples, customSpeed]);
+
+  const stateRef = useRef<GameState>(generateLevel(5));
+  const enemySpeedRef = useRef(320);
   const keysRef = useRef<Record<string, boolean>>({});
   const lastMoveRef = useRef(0);
   const lastEnemyRef = useRef(0);
