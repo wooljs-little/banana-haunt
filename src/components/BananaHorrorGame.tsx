@@ -528,14 +528,22 @@ export function BananaHorrorGame() {
   const [difficultyId, setDifficultyId] = useState<string>("normal");
   const [customApples, setCustomApples] = useState(5);
   const [customSpeed, setCustomSpeed] = useState(320);
+  const [customEnemies, setCustomEnemies] = useState<
+    Record<EnemyKind, number>
+  >({ banana: 1, apple: 0, chicken: 0, fish: 0 });
 
   const getActiveDifficulty = useCallback((): Difficulty => {
     const d = DIFFICULTIES.find((x) => x.id === difficultyId) ?? DIFFICULTIES[1];
     if (d.id === "custom") {
-      return { ...d, apples: customApples, enemySpeedMs: customSpeed };
+      return {
+        ...d,
+        apples: customApples,
+        enemySpeedMs: customSpeed,
+        enemies: customEnemies,
+      };
     }
     return d;
-  }, [difficultyId, customApples, customSpeed]);
+  }, [difficultyId, customApples, customSpeed, customEnemies]);
 
   const stateRef = useRef<GameState>(generateLevel(5, { banana: 1 }));
   const enemySpeedRef = useRef(320);
@@ -974,9 +982,20 @@ export function BananaHorrorGame() {
               >
                 {d.label}
                 <div className="text-[9px] opacity-80 mt-0.5 font-normal">
-                  {d.id === "custom"
-                    ? "自分で設定"
-                    : `🍎${d.apples}・速さ${Math.round(2000 / d.enemySpeedMs * 10) / 10}`}
+                  {d.id === "custom" ? (
+                    "自分で設定"
+                  ) : (
+                    <>
+                      🍎{d.apples}・
+                      {(Object.keys(d.enemies) as EnemyKind[])
+                        .filter((k) => (d.enemies[k] ?? 0) > 0)
+                        .map(
+                          (k) =>
+                            `${ENEMY_LABEL[k].split(" ")[0]}${d.enemies[k]}`,
+                        )
+                        .join(" ")}
+                    </>
+                  )}
                 </div>
               </button>
             ))}
@@ -1025,6 +1044,36 @@ export function BananaHorrorGame() {
                   <span>のろま</span>
                   <span>俊敏</span>
                 </div>
+              </div>
+
+              <div className="border-t pt-2" style={{ borderColor: "#5a2a2a" }}>
+                <div className="text-[10px] mb-1.5 opacity-80">
+                  👹 敵の数（合計0でも開始可・無敵モード）
+                </div>
+                {(Object.keys(customEnemies) as EnemyKind[]).map((kind) => (
+                  <div key={kind} className="mb-1">
+                    <div className="flex justify-between text-[10px]">
+                      <span>{ENEMY_LABEL[kind]}</span>
+                      <span style={{ color: "#f4d03f" }}>
+                        {customEnemies[kind]}体
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={6}
+                      step={1}
+                      value={customEnemies[kind]}
+                      onChange={(e) =>
+                        setCustomEnemies((prev) => ({
+                          ...prev,
+                          [kind]: parseInt(e.target.value),
+                        }))
+                      }
+                      className="w-full accent-yellow-400"
+                    />
+                  </div>
+                ))}
               </div>
             </div>
           )}
