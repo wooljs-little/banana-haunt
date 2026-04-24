@@ -260,6 +260,21 @@ const H = TILE * ROWS;
 
 type Vec = { x: number; y: number };
 
+export interface Difficulty {
+  id: string;
+  label: string;
+  apples: number;
+  enemySpeedMs: number; // lower = faster
+}
+
+export const DIFFICULTIES: Difficulty[] = [
+  { id: "easy", label: "イージー 🍮", apples: 3, enemySpeedMs: 480 },
+  { id: "normal", label: "ノーマル 🍌", apples: 5, enemySpeedMs: 320 },
+  { id: "hard", label: "ハード 🔥", apples: 7, enemySpeedMs: 220 },
+  { id: "nightmare", label: "ナイトメア 💀", apples: 10, enemySpeedMs: 150 },
+  { id: "custom", label: "カスタム ⚙️", apples: 5, enemySpeedMs: 320 },
+];
+
 interface GameState {
   player: Vec;
   enemy: Vec;
@@ -268,9 +283,10 @@ interface GameState {
   collected: number;
   status: "playing" | "won" | "lost";
   hidden: boolean;
+  totalApples: number;
 }
 
-function generateLevel(): GameState {
+function generateLevel(appleCount: number): GameState {
   const walls = new Set<string>();
   for (let x = 0; x < COLS; x++) {
     walls.add(`${x},0`);
@@ -288,7 +304,7 @@ function generateLevel(): GameState {
   }
 
   const freeCell = (): Vec => {
-    for (let i = 0; i < 200; i++) {
+    for (let i = 0; i < 300; i++) {
       const x = 1 + Math.floor(Math.random() * (COLS - 2));
       const y = 1 + Math.floor(Math.random() * (ROWS - 2));
       if (!walls.has(`${x},${y}`)) return { x, y };
@@ -296,22 +312,22 @@ function generateLevel(): GameState {
     return { x: 1, y: 1 };
   };
 
-  const player = { x: 2, y: 2 };
-  walls.delete("2,2");
-  walls.delete("2,3");
-  walls.delete("3,2");
+  // Random player spawn
+  const player = freeCell();
+  walls.delete(`${player.x},${player.y}`);
 
   const apples: Vec[] = [];
-  while (apples.length < 5) {
+  let attempts = 0;
+  while (apples.length < appleCount && attempts++ < 1000) {
     const c = freeCell();
-    if (Math.abs(c.x - player.x) + Math.abs(c.y - player.y) < 5) continue;
+    if (Math.abs(c.x - player.x) + Math.abs(c.y - player.y) < 4) continue;
     if (apples.some((a) => a.x === c.x && a.y === c.y)) continue;
     apples.push(c);
   }
 
   let enemy = freeCell();
-  for (let i = 0; i < 50; i++) {
-    if (Math.abs(enemy.x - player.x) + Math.abs(enemy.y - player.y) >= 8) break;
+  for (let i = 0; i < 80; i++) {
+    if (Math.abs(enemy.x - player.x) + Math.abs(enemy.y - player.y) >= 7) break;
     enemy = freeCell();
   }
 
@@ -323,6 +339,7 @@ function generateLevel(): GameState {
     collected: 0,
     status: "playing",
     hidden: false,
+    totalApples: apples.length,
   };
 }
 
@@ -360,7 +377,20 @@ function nextStepToward(
 export function BananaHorrorGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<AudioEngine | null>(null);
-  const stateRef = useRef<GameState>(generateLevel());
+  const [difficultyId, setDifficultyId] = useState<string>("normal");
+  const [customApples, setCustomApples] = useState(5);
+  const [customSpeed, setCustomSpeed] = useState(320);
+
+  const getActiveDifficulty = useCallback((): Difficulty => {
+    const d = DIFFICULTIES.find((x) => x.id === difficultyId) ?? DIFFICULTIES[1];
+    if (d.id === "custom") {
+      return { ...d, apples: customApples, enemySpeedMs: customSpeed };
+    }
+    return d;
+  }, [difficultyId, customApples, customSpeed]);
+
+  const stateRef = useRef<GameState>(generateLevel(5));
+  const enemySpeedRef = useRef(320);
   const keysRef = useRef<Record<string, boolean>>({});
   const lastMoveRef = useRef(0);
   const lastEnemyRef = useRef(0);
@@ -382,16 +412,20 @@ export function BananaHorrorGame() {
     if (starting || started) return;
     setStarting(true);
     try {
+      const d = getActiveDifficulty();
+      stateRef.current = generateLevel(d.apples);
+      enemySpeedRef.current = d.enemySpeedMs;
       if (!engineRef.current) engineRef.current = new AudioEngine();
       await engineRef.current.start();
       setStarted(true);
-      // Defer speech to avoid blocking
       setTimeout(() => {
-        engineRef.current?.speak("バナナが、追いかけてくる。りんごを5つ集めなさい。");
+        engineRef.current?.speak(
+          `バナナが、追いかけてくる。りんごを${d.apples}つ集めなさい。`,
+        );
       }, 300);
     } catch (e) {
       console.error("start failed", e);
-      setStarted(true); // start game anyway
+      setStarted(true);
     } finally {
       setStarting(false);
     }
@@ -440,7 +474,7 @@ export function BananaHorrorGame() {
       s.apples.splice(idx, 1);
       s.collected++;
       engineRef.current?.playPickup();
-      if (s.collected >= 5) {
+      if (s.collected >= s.totalApples) {
         s.status = "won";
         engineRef.current?.playWin();
         engineRef.current?.speak("脱出、成功。");
@@ -486,7 +520,8 @@ export function BananaHorrorGame() {
         }
 
         // Enemy
-        const speedMs = s.hidden ? 700 : 320;
+        const baseSpeed = enemySpeedRef.current;
+        const speedMs = s.hidden ? baseSpeed * 2.2 : baseSpeed;
         if (now - lastEnemyRef.current > speedMs) {
           const step = nextStepToward(s.enemy, s.player, s.walls);
           if (step) s.enemy = step;
@@ -597,11 +632,18 @@ export function BananaHorrorGame() {
   }, [started, move, rerender]);
 
   const reset = () => {
-    stateRef.current = generateLevel();
+    const d = getActiveDifficulty();
+    stateRef.current = generateLevel(d.apples);
+    enemySpeedRef.current = d.enemySpeedMs;
     rerender();
   };
 
+  const backToMenu = () => {
+    setStarted(false);
+  };
+
   const s = stateRef.current;
+  const activeDiff = getActiveDifficulty();
 
   return (
     <div className="min-h-screen w-full flex flex-col items-center justify-start gap-3 p-3 bg-background text-foreground">
@@ -618,23 +660,112 @@ export function BananaHorrorGame() {
           髪の生えたばなな追想曲
         </h1>
         <p className="text-xs mt-1 opacity-70">
-          🍎 りんごを5つ集めて脱出せよ 🍌
+          🍎 りんごを集めて脱出せよ 🍌
         </p>
       </header>
 
       {!started ? (
-        <button
-          onClick={handleStart}
-          disabled={starting}
-          className="px-6 py-3 text-lg font-bold rounded-lg transition-transform hover:scale-105 active:scale-95 disabled:opacity-60"
+        <div
+          className="flex flex-col gap-3 p-4 rounded-lg border-2 w-full max-w-md"
           style={{
-            background: "linear-gradient(135deg, #f4d03f, #c0392b)",
-            color: "#1a0a0a",
-            boxShadow: "0 0 20px rgba(192,57,43,0.4)",
+            borderColor: "#5a2a2a",
+            background: "rgba(0,0,0,0.4)",
           }}
         >
-          {starting ? "起動中..." : "▶ ゲーム開始（タップで音声有効化）"}
-        </button>
+          <h2
+            className="text-sm font-bold font-mono"
+            style={{ color: "#f4d03f" }}
+          >
+            🎮 難易度を選択
+          </h2>
+          <div className="grid grid-cols-2 gap-2">
+            {DIFFICULTIES.map((d) => (
+              <button
+                key={d.id}
+                onClick={() => setDifficultyId(d.id)}
+                className="px-3 py-2 rounded text-xs font-bold font-mono transition-all"
+                style={{
+                  background:
+                    difficultyId === d.id
+                      ? "linear-gradient(135deg, #f4d03f, #c0392b)"
+                      : "rgba(90,42,42,0.5)",
+                  color: difficultyId === d.id ? "#1a0a0a" : "#f4d03f",
+                  border:
+                    difficultyId === d.id
+                      ? "2px solid #f4d03f"
+                      : "1px solid #5a2a2a",
+                }}
+              >
+                {d.label}
+                <div className="text-[9px] opacity-80 mt-0.5 font-normal">
+                  {d.id === "custom"
+                    ? "自分で設定"
+                    : `🍎${d.apples}・速さ${Math.round(2000 / d.enemySpeedMs * 10) / 10}`}
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {difficultyId === "custom" && (
+            <div
+              className="flex flex-col gap-2 p-3 rounded font-mono text-xs"
+              style={{ background: "rgba(0,0,0,0.4)" }}
+            >
+              <div>
+                <div className="flex justify-between">
+                  <span>🍎 りんごの数</span>
+                  <span style={{ color: "#f4d03f" }}>{customApples}個</span>
+                </div>
+                <input
+                  type="range"
+                  min={1}
+                  max={20}
+                  step={1}
+                  value={customApples}
+                  onChange={(e) => setCustomApples(parseInt(e.target.value))}
+                  className="w-full accent-yellow-400"
+                />
+              </div>
+              <div>
+                <div className="flex justify-between">
+                  <span>🍌 ばななの速さ</span>
+                  <span style={{ color: "#f4d03f" }}>
+                    {Math.round((2000 / customSpeed) * 10) / 10}歩/秒
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={80}
+                  max={800}
+                  step={20}
+                  // Inverted: higher slider = faster (lower ms)
+                  value={880 - customSpeed}
+                  onChange={(e) =>
+                    setCustomSpeed(880 - parseInt(e.target.value))
+                  }
+                  className="w-full accent-yellow-400"
+                />
+                <div className="flex justify-between text-[9px] opacity-60">
+                  <span>のろま</span>
+                  <span>俊敏</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <button
+            onClick={handleStart}
+            disabled={starting}
+            className="px-6 py-3 text-lg font-bold rounded-lg transition-transform hover:scale-105 active:scale-95 disabled:opacity-60"
+            style={{
+              background: "linear-gradient(135deg, #f4d03f, #c0392b)",
+              color: "#1a0a0a",
+              boxShadow: "0 0 20px rgba(192,57,43,0.4)",
+            }}
+          >
+            {starting ? "起動中..." : "▶ ゲーム開始"}
+          </button>
+        </div>
       ) : (
         <div className="flex flex-col lg:flex-row gap-3 items-start w-full max-w-5xl">
           <div className="flex flex-col gap-2 flex-1 items-center">
@@ -642,7 +773,8 @@ export function BananaHorrorGame() {
               className="flex justify-between text-xs font-mono px-2 w-full"
               style={{ maxWidth: W }}
             >
-              <span>🍎 {s.collected}/5</span>
+              <span>🍎 {s.collected}/{s.totalApples}</span>
+              <span style={{ color: "#f4d03f" }}>{activeDiff.label}</span>
               <span>{s.hidden ? "🫥 隠れ" : "🚶"}</span>
               <span>
                 {s.status === "won"
@@ -707,15 +839,28 @@ export function BananaHorrorGame() {
               <div />
             </div>
 
-            {s.status !== "playing" && (
+            <div className="flex gap-2">
+              {s.status !== "playing" && (
+                <button
+                  onClick={reset}
+                  className="px-4 py-2 rounded font-bold"
+                  style={{ background: "#f4d03f", color: "#1a0a0a" }}
+                >
+                  ↻ もう一度
+                </button>
+              )}
               <button
-                onClick={reset}
-                className="px-4 py-2 rounded font-bold"
-                style={{ background: "#f4d03f", color: "#1a0a0a" }}
+                onClick={backToMenu}
+                className="px-4 py-2 rounded font-bold text-xs"
+                style={{
+                  background: "rgba(90,42,42,0.6)",
+                  color: "#f4d03f",
+                  border: "1px solid #5a2a2a",
+                }}
               >
-                ↻ もう一度
+                ← 難易度選択
               </button>
-            )}
+            </div>
           </div>
 
           {/* Mixer */}
