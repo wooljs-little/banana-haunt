@@ -632,11 +632,18 @@ export function BananaHorrorGame() {
   }, [started, move, rerender]);
 
   const reset = () => {
-    stateRef.current = generateLevel();
+    const d = getActiveDifficulty();
+    stateRef.current = generateLevel(d.apples);
+    enemySpeedRef.current = d.enemySpeedMs;
     rerender();
   };
 
+  const backToMenu = () => {
+    setStarted(false);
+  };
+
   const s = stateRef.current;
+  const activeDiff = getActiveDifficulty();
 
   return (
     <div className="min-h-screen w-full flex flex-col items-center justify-start gap-3 p-3 bg-background text-foreground">
@@ -653,23 +660,112 @@ export function BananaHorrorGame() {
           髪の生えたばなな追想曲
         </h1>
         <p className="text-xs mt-1 opacity-70">
-          🍎 りんごを5つ集めて脱出せよ 🍌
+          🍎 りんごを集めて脱出せよ 🍌
         </p>
       </header>
 
       {!started ? (
-        <button
-          onClick={handleStart}
-          disabled={starting}
-          className="px-6 py-3 text-lg font-bold rounded-lg transition-transform hover:scale-105 active:scale-95 disabled:opacity-60"
+        <div
+          className="flex flex-col gap-3 p-4 rounded-lg border-2 w-full max-w-md"
           style={{
-            background: "linear-gradient(135deg, #f4d03f, #c0392b)",
-            color: "#1a0a0a",
-            boxShadow: "0 0 20px rgba(192,57,43,0.4)",
+            borderColor: "#5a2a2a",
+            background: "rgba(0,0,0,0.4)",
           }}
         >
-          {starting ? "起動中..." : "▶ ゲーム開始（タップで音声有効化）"}
-        </button>
+          <h2
+            className="text-sm font-bold font-mono"
+            style={{ color: "#f4d03f" }}
+          >
+            🎮 難易度を選択
+          </h2>
+          <div className="grid grid-cols-2 gap-2">
+            {DIFFICULTIES.map((d) => (
+              <button
+                key={d.id}
+                onClick={() => setDifficultyId(d.id)}
+                className="px-3 py-2 rounded text-xs font-bold font-mono transition-all"
+                style={{
+                  background:
+                    difficultyId === d.id
+                      ? "linear-gradient(135deg, #f4d03f, #c0392b)"
+                      : "rgba(90,42,42,0.5)",
+                  color: difficultyId === d.id ? "#1a0a0a" : "#f4d03f",
+                  border:
+                    difficultyId === d.id
+                      ? "2px solid #f4d03f"
+                      : "1px solid #5a2a2a",
+                }}
+              >
+                {d.label}
+                <div className="text-[9px] opacity-80 mt-0.5 font-normal">
+                  {d.id === "custom"
+                    ? "自分で設定"
+                    : `🍎${d.apples}・速さ${Math.round(2000 / d.enemySpeedMs * 10) / 10}`}
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {difficultyId === "custom" && (
+            <div
+              className="flex flex-col gap-2 p-3 rounded font-mono text-xs"
+              style={{ background: "rgba(0,0,0,0.4)" }}
+            >
+              <div>
+                <div className="flex justify-between">
+                  <span>🍎 りんごの数</span>
+                  <span style={{ color: "#f4d03f" }}>{customApples}個</span>
+                </div>
+                <input
+                  type="range"
+                  min={1}
+                  max={20}
+                  step={1}
+                  value={customApples}
+                  onChange={(e) => setCustomApples(parseInt(e.target.value))}
+                  className="w-full accent-yellow-400"
+                />
+              </div>
+              <div>
+                <div className="flex justify-between">
+                  <span>🍌 ばななの速さ</span>
+                  <span style={{ color: "#f4d03f" }}>
+                    {Math.round((2000 / customSpeed) * 10) / 10}歩/秒
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={80}
+                  max={800}
+                  step={20}
+                  // Inverted: higher slider = faster (lower ms)
+                  value={880 - customSpeed}
+                  onChange={(e) =>
+                    setCustomSpeed(880 - parseInt(e.target.value))
+                  }
+                  className="w-full accent-yellow-400"
+                />
+                <div className="flex justify-between text-[9px] opacity-60">
+                  <span>のろま</span>
+                  <span>俊敏</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <button
+            onClick={handleStart}
+            disabled={starting}
+            className="px-6 py-3 text-lg font-bold rounded-lg transition-transform hover:scale-105 active:scale-95 disabled:opacity-60"
+            style={{
+              background: "linear-gradient(135deg, #f4d03f, #c0392b)",
+              color: "#1a0a0a",
+              boxShadow: "0 0 20px rgba(192,57,43,0.4)",
+            }}
+          >
+            {starting ? "起動中..." : "▶ ゲーム開始"}
+          </button>
+        </div>
       ) : (
         <div className="flex flex-col lg:flex-row gap-3 items-start w-full max-w-5xl">
           <div className="flex flex-col gap-2 flex-1 items-center">
