@@ -5,7 +5,7 @@ export const Route = createFileRoute("/")({
   component: Index,
   head: () => ({
     meta: [
-      { title: "髪の生えたばなな追想曲 — Banana Horror" },
+      { title: "黄鬼" },
       {
         name: "description",
         content:
