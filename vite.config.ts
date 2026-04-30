@@ -5,13 +5,6 @@ export default defineConfig({
     build: {
       outDir: 'dist',
       emptyOutDir: true,
-      rollupOptions: {
-        output: {
-          entryFileNames: 'index.js',
-          chunkFileNames: 'index.js',
-          assetFileNames: 'index[extname]',
-        },
-      },
     },
   },
 });
