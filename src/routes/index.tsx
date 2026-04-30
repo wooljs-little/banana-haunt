@@ -11,7 +11,7 @@ export const Route = createFileRoute("/")({
         content:
           "ポップで不気味な2Dホラー。りんごを5つ集めて、髪の生えたバナナから逃げ延びろ。WebAudio合成によるサウンドスケープ。",
       },
-      { property: "og:title", content: "髪の生えたばなな追想曲" },
+      { property: "og:title", content: "黄鬼" },
       {
         property: "og:description",
         content: "りんごを5つ集めて脱出するポップ・ホラーゲーム",
