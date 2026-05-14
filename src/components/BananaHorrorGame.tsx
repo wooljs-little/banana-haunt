@@ -1074,7 +1074,7 @@ export function BananaHorrorGame() {
   const buffStun = Math.max(0, s.stunUntil - nowMs);
 
   return (
-    <div className="min-h-screen w-full flex flex-col items-center justify-start gap-3 p-3 bg-background text-foreground">
+    <div className="min-h-[100dvh] w-full flex flex-col items-center justify-start gap-3 p-3 bg-background text-foreground">
       <header className="text-center">
         <h1
           className="text-2xl md:text-4xl font-black tracking-wider"
