@@ -615,6 +615,33 @@ export function BananaHorrorGame() {
   const [, force] = useState(0);
   const rerender = useCallback(() => force((v) => v + 1), []);
 
+  // Viewport tracking for responsive canvas sizing
+  const [viewport, setViewport] = useState(() => ({
+    w: typeof window !== "undefined" ? window.innerWidth : 800,
+    h: typeof window !== "undefined" ? window.innerHeight : 600,
+  }));
+  useEffect(() => {
+    const update = () =>
+      setViewport({ w: window.innerWidth, h: window.innerHeight });
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("orientationchange", update);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("orientationchange", update);
+    };
+  }, []);
+  const isLandscape = viewport.w > viewport.h;
+  const isTouchLandscape = isLandscape && viewport.h < 600;
+  // Reserve space for header/HUD/controls; in landscape, D-pad sits beside canvas.
+  const reservedH = isTouchLandscape ? 80 : 280;
+  const reservedW = isTouchLandscape ? 200 : 24;
+  const aspect = W / H;
+  const maxByH = Math.max(180, viewport.h - reservedH);
+  const maxByW = Math.max(220, viewport.w - reservedW);
+  const cw = Math.min(W, maxByW, maxByH * aspect);
+  const ch = cw / aspect;
+
   const [mix, setMix] = useState({
     master: 0.7,
     bgm: 0.15,
