@@ -551,6 +551,34 @@ function stepEnemy(
   return enemy.pos;
 }
 
+function TouchBtn({ onPress, label }: { onPress: () => void; label: string }) {
+  const timer = useRef<number | null>(null);
+  const stop = () => {
+    if (timer.current !== null) {
+      clearInterval(timer.current);
+      timer.current = null;
+    }
+  };
+  return (
+    <button
+      onPointerDown={(e) => {
+        e.preventDefault();
+        (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+        onPress();
+        stop();
+        timer.current = window.setInterval(onPress, 150);
+      }}
+      onPointerUp={stop}
+      onPointerCancel={stop}
+      onPointerLeave={stop}
+      className="w-16 h-16 rounded-lg border-2 text-2xl font-bold active:scale-95 touch-none"
+      style={{ background: "rgba(244,208,63,0.18)", borderColor: "#f4d03f", color: "#f4d03f" }}
+    >
+      {label}
+    </button>
+  );
+}
+
 export function BananaHorrorGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<AudioEngine | null>(null);
@@ -580,6 +608,7 @@ export function BananaHorrorGame() {
   const enemySpeedRef = useRef(320);
   const keysRef = useRef<Record<string, boolean>>({});
   const lastMoveRef = useRef(0);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   const [started, setStarted] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -1174,37 +1203,62 @@ export function BananaHorrorGame() {
               ref={canvasRef}
               width={W}
               height={H}
-              className="rounded border-2 max-w-full h-auto"
-              style={{ borderColor: "#5a2a2a", imageRendering: "pixelated" }}
+              onTouchStart={(e) => {
+                const t = e.touches[0];
+                touchStartRef.current = { x: t.clientX, y: t.clientY };
+              }}
+              onTouchEnd={(e) => {
+                const start = touchStartRef.current;
+                if (!start) return;
+                const t = e.changedTouches[0];
+                const dx = t.clientX - start.x;
+                const dy = t.clientY - start.y;
+                const ax = Math.abs(dx), ay = Math.abs(dy);
+                if (Math.max(ax, ay) < 20) {
+                  // tap → toggle hide
+                  const st = stateRef.current;
+                  if (st.status === "playing") {
+                    st.hidden = !st.hidden;
+                    st.lastMessage = st.hidden ? "🫥 隠れた" : "🚶 出た";
+                    rerender();
+                  }
+                } else if (ax > ay) {
+                  move(dx > 0 ? 1 : -1, 0);
+                } else {
+                  move(0, dy > 0 ? 1 : -1);
+                }
+                touchStartRef.current = null;
+              }}
+              className="rounded border-2 w-full h-auto touch-none"
+              style={{ borderColor: "#5a2a2a", imageRendering: "pixelated", maxWidth: W }}
             />
             <div className="text-[10px] opacity-60 font-mono px-2 text-center">
-              矢印 / WASD: 移動 ・ Shift: 隠れる切替（隠れ中は動けないが見つからない）
+              矢印/WASD・Shift：隠れる ／ スマホ：スワイプで移動・タップで隠れる
             </div>
 
-            {/* Touch D-pad */}
-            <div className="grid grid-cols-3 gap-1 lg:hidden select-none touch-none">
+            {/* Touch D-pad — visible on touch devices */}
+            <div className="grid grid-cols-3 gap-2 select-none touch-none [@media(hover:hover)]:hidden mt-2">
               <div />
-              <button onPointerDown={() => move(0, -1)}
-                className="w-12 h-12 rounded bg-yellow-400/20 border border-yellow-400/40 text-xl">↑</button>
+              <TouchBtn onPress={() => move(0, -1)} label="↑" />
               <div />
-              <button onPointerDown={() => move(-1, 0)}
-                className="w-12 h-12 rounded bg-yellow-400/20 border border-yellow-400/40 text-xl">←</button>
+              <TouchBtn onPress={() => move(-1, 0)} label="←" />
               <button
-                onPointerDown={() => {
+                onPointerDown={(e) => {
+                  e.preventDefault();
                   const st = stateRef.current;
                   if (st.status !== "playing") return;
                   st.hidden = !st.hidden;
                   st.lastMessage = st.hidden ? "🫥 隠れた" : "🚶 出た";
                   rerender();
                 }}
-                className="w-12 h-12 rounded bg-red-500/20 border border-red-500/40 text-xs">
+                className="w-16 h-16 rounded-lg border-2 text-xs font-bold active:scale-95 touch-none"
+                style={{ background: "rgba(192,57,43,0.25)", borderColor: "#c0392b", color: "#f4d03f" }}
+              >
                 {s.hidden ? "出る" : "隠れ"}
               </button>
-              <button onPointerDown={() => move(1, 0)}
-                className="w-12 h-12 rounded bg-yellow-400/20 border border-yellow-400/40 text-xl">→</button>
+              <TouchBtn onPress={() => move(1, 0)} label="→" />
               <div />
-              <button onPointerDown={() => move(0, 1)}
-                className="w-12 h-12 rounded bg-yellow-400/20 border border-yellow-400/40 text-xl">↓</button>
+              <TouchBtn onPress={() => move(0, 1)} label="↓" />
               <div />
             </div>
 
