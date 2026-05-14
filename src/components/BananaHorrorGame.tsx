@@ -1181,30 +1181,29 @@ export function BananaHorrorGame() {
               矢印 / WASD: 移動 ・ Shift: 隠れる切替（隠れ中は動けないが見つからない）
             </div>
 
-            {/* Touch D-pad */}
-            <div className="grid grid-cols-3 gap-1 lg:hidden select-none touch-none">
+            {/* Touch D-pad — visible on touch devices */}
+            <div className="grid grid-cols-3 gap-2 select-none touch-none [@media(hover:hover)]:hidden mt-2">
               <div />
-              <button onPointerDown={() => move(0, -1)}
-                className="w-12 h-12 rounded bg-yellow-400/20 border border-yellow-400/40 text-xl">↑</button>
+              <TouchBtn onPress={() => move(0, -1)} label="↑" />
               <div />
-              <button onPointerDown={() => move(-1, 0)}
-                className="w-12 h-12 rounded bg-yellow-400/20 border border-yellow-400/40 text-xl">←</button>
+              <TouchBtn onPress={() => move(-1, 0)} label="←" />
               <button
-                onPointerDown={() => {
+                onPointerDown={(e) => {
+                  e.preventDefault();
                   const st = stateRef.current;
                   if (st.status !== "playing") return;
                   st.hidden = !st.hidden;
                   st.lastMessage = st.hidden ? "🫥 隠れた" : "🚶 出た";
                   rerender();
                 }}
-                className="w-12 h-12 rounded bg-red-500/20 border border-red-500/40 text-xs">
+                className="w-16 h-16 rounded-lg border-2 text-xs font-bold active:scale-95 touch-none"
+                style={{ background: "rgba(192,57,43,0.25)", borderColor: "#c0392b", color: "#f4d03f" }}
+              >
                 {s.hidden ? "出る" : "隠れ"}
               </button>
-              <button onPointerDown={() => move(1, 0)}
-                className="w-12 h-12 rounded bg-yellow-400/20 border border-yellow-400/40 text-xl">→</button>
+              <TouchBtn onPress={() => move(1, 0)} label="→" />
               <div />
-              <button onPointerDown={() => move(0, 1)}
-                className="w-12 h-12 rounded bg-yellow-400/20 border border-yellow-400/40 text-xl">↓</button>
+              <TouchBtn onPress={() => move(0, 1)} label="↓" />
               <div />
             </div>
 
