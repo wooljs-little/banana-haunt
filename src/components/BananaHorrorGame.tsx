@@ -608,6 +608,7 @@ export function BananaHorrorGame() {
   const enemySpeedRef = useRef(320);
   const keysRef = useRef<Record<string, boolean>>({});
   const lastMoveRef = useRef(0);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   const [started, setStarted] = useState(false);
   const [starting, setStarting] = useState(false);
