@@ -1230,7 +1230,7 @@ export function BananaHorrorGame() {
             </div>
 
             {/* Canvas + landscape D-pad row */}
-            <div className={`flex ${isTouchLandscape ? "flex-row" : "flex-col"} gap-3 items-center justify-center w-full`}>
+            <div className="flex flex-row gap-3 items-center justify-center w-full">
               <canvas
                 ref={canvasRef}
                 width={W}
