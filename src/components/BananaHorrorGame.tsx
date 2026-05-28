@@ -551,7 +551,15 @@ function stepEnemy(
   return enemy.pos;
 }
 
-function TouchBtn({ onPress, label }: { onPress: () => void; label: string }) {
+function TouchBtn({
+  onPress,
+  label,
+  className,
+}: {
+  onPress: () => void;
+  label: string;
+  className?: string;
+}) {
   const timer = useRef<number | null>(null);
   const stop = () => {
     if (timer.current !== null) {
@@ -566,13 +574,17 @@ function TouchBtn({ onPress, label }: { onPress: () => void; label: string }) {
         (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
         onPress();
         stop();
-        timer.current = window.setInterval(onPress, 150);
+        timer.current = window.setInterval(onPress, 180);
       }}
       onPointerUp={stop}
       onPointerCancel={stop}
       onPointerLeave={stop}
-      className="w-16 h-16 rounded-lg border-2 text-2xl font-bold active:scale-95 touch-none"
-      style={{ background: "rgba(244,208,63,0.18)", borderColor: "#f4d03f", color: "#f4d03f" }}
+      className={`rounded-lg border-2 font-bold active:scale-90 touch-none select-none flex items-center justify-center ${className || ""}`}
+      style={{
+        background: "rgba(244,208,63,0.18)",
+        borderColor: "#f4d03f",
+        color: "#f4d03f",
+      }}
     >
       {label}
     </button>
@@ -637,7 +649,7 @@ export function BananaHorrorGame() {
     window.matchMedia("(hover: none)").matches;
   // D-pad always on the right on touch devices
   const reservedH = isLandscape ? 80 : 220;
-  const reservedW = isTouch ? 220 : 24;
+  const reservedW = isTouch ? (isLandscape ? 260 : 180) : 24;
   const aspect = W / H;
   const maxByH = Math.max(180, viewport.h - reservedH);
   const maxByW = Math.max(220, viewport.w - reservedW);
@@ -1270,11 +1282,11 @@ export function BananaHorrorGame() {
               />
 
               {/* Touch D-pad */}
-              <div className="grid grid-cols-3 gap-2 select-none touch-none [@media(hover:hover)]:hidden">
+              <div className={`grid grid-cols-3 select-none touch-none [@media(hover:hover)]:hidden ${isLandscape ? "gap-3" : "gap-2"}`}>
                 <div />
-                <TouchBtn onPress={() => move(0, -1)} label="↑" />
+                <TouchBtn onPress={() => move(0, -1)} label="↑" className={`${isLandscape ? "w-[72px] h-[72px] text-2xl -m-1 p-1" : "w-14 h-14 text-lg"}`} />
                 <div />
-                <TouchBtn onPress={() => move(-1, 0)} label="←" />
+                <TouchBtn onPress={() => move(-1, 0)} label="←" className={`${isLandscape ? "w-[72px] h-[72px] text-2xl -m-1 p-1" : "w-14 h-14 text-lg"}`} />
                 <button
                   onPointerDown={(e) => {
                     e.preventDefault();
@@ -1284,14 +1296,14 @@ export function BananaHorrorGame() {
                     st.lastMessage = st.hidden ? "🫥 隠れた" : "🚶 出た";
                     rerender();
                   }}
-                  className="w-16 h-16 rounded-lg border-2 text-xs font-bold active:scale-95 touch-none"
+                  className={`rounded-lg border-2 text-xs font-bold active:scale-90 touch-none select-none flex items-center justify-center ${isLandscape ? "w-[72px] h-[72px] -m-1 p-1" : "w-14 h-14"}`}
                   style={{ background: "rgba(192,57,43,0.25)", borderColor: "#c0392b", color: "#f4d03f" }}
                 >
                   {s.hidden ? "出る" : "隠れ"}
                 </button>
-                <TouchBtn onPress={() => move(1, 0)} label="→" />
+                <TouchBtn onPress={() => move(1, 0)} label="→" className={`${isLandscape ? "w-[72px] h-[72px] text-2xl -m-1 p-1" : "w-14 h-14 text-lg"}`} />
                 <div />
-                <TouchBtn onPress={() => move(0, 1)} label="↓" />
+                <TouchBtn onPress={() => move(0, 1)} label="↓" className={`${isLandscape ? "w-[72px] h-[72px] text-2xl -m-1 p-1" : "w-14 h-14 text-lg"}`} />
                 <div />
               </div>
             </div>
