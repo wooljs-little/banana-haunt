@@ -627,29 +627,48 @@ export function BananaHorrorGame() {
   const [, force] = useState(0);
   const rerender = useCallback(() => force((v) => v + 1), []);
 
-  // Viewport tracking for responsive canvas sizing
-  const [viewport, setViewport] = useState(() => ({
-    w: typeof window !== "undefined" ? window.innerWidth : 800,
-    h: typeof window !== "undefined" ? window.innerHeight : 600,
-  }));
+  // Viewport tracking for responsive canvas sizing (rAF-throttled, visualViewport-aware)
+  const getVp = () => {
+    if (typeof window === "undefined") return { w: 800, h: 600 };
+    const vv = window.visualViewport;
+    return {
+      w: Math.round(vv?.width ?? window.innerWidth),
+      h: Math.round(vv?.height ?? window.innerHeight),
+    };
+  };
+  const [viewport, setViewport] = useState(getVp);
+  const [isTouch, setIsTouch] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(hover: none)").matches
+  );
   useEffect(() => {
-    const update = () =>
-      setViewport({ w: window.innerWidth, h: window.innerHeight });
+    let raf = 0;
+    const update = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const next = getVp();
+        setViewport((prev) => (prev.w === next.w && prev.h === next.h ? prev : next));
+      });
+    };
     update();
-    window.addEventListener("resize", update);
+    window.addEventListener("resize", update, { passive: true });
     window.addEventListener("orientationchange", update);
+    window.visualViewport?.addEventListener("resize", update);
+    const mq = window.matchMedia("(hover: none)");
+    const onMq = () => setIsTouch(mq.matches);
+    mq.addEventListener?.("change", onMq);
     return () => {
+      cancelAnimationFrame(raf);
       window.removeEventListener("resize", update);
       window.removeEventListener("orientationchange", update);
+      window.visualViewport?.removeEventListener("resize", update);
+      mq.removeEventListener?.("change", onMq);
     };
   }, []);
   const isLandscape = viewport.w > viewport.h;
-  const isTouch =
-    typeof window !== "undefined" &&
-    window.matchMedia("(hover: none)").matches;
-  // D-pad always on the right on touch devices
-  const reservedH = isLandscape ? 80 : 220;
-  const reservedW = isTouch ? (isLandscape ? 260 : 180) : 24;
+  // Fixed D-pad slot widths so the canvas position doesn't shift mid-layout
+  const dpadSlotW = isTouch ? (isLandscape ? 248 : 180) : 0;
+  const reservedH = isLandscape ? 80 : (isTouch ? 220 : 160);
+  const reservedW = dpadSlotW + 24;
   const aspect = W / H;
   const maxByH = Math.max(180, viewport.h - reservedH);
   const maxByW = Math.max(220, viewport.w - reservedW);
