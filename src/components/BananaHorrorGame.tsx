@@ -649,7 +649,7 @@ export function BananaHorrorGame() {
     window.matchMedia("(hover: none)").matches;
   // D-pad always on the right on touch devices
   const reservedH = isLandscape ? 80 : 220;
-  const reservedW = isTouch ? 220 : 24;
+  const reservedW = isTouch ? (isLandscape ? 260 : 180) : 24;
   const aspect = W / H;
   const maxByH = Math.max(180, viewport.h - reservedH);
   const maxByW = Math.max(220, viewport.w - reservedW);
