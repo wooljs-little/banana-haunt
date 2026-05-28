@@ -551,7 +551,15 @@ function stepEnemy(
   return enemy.pos;
 }
 
-function TouchBtn({ onPress, label }: { onPress: () => void; label: string }) {
+function TouchBtn({
+  onPress,
+  label,
+  className,
+}: {
+  onPress: () => void;
+  label: string;
+  className?: string;
+}) {
   const timer = useRef<number | null>(null);
   const stop = () => {
     if (timer.current !== null) {
@@ -566,13 +574,17 @@ function TouchBtn({ onPress, label }: { onPress: () => void; label: string }) {
         (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
         onPress();
         stop();
-        timer.current = window.setInterval(onPress, 150);
+        timer.current = window.setInterval(onPress, 180);
       }}
       onPointerUp={stop}
       onPointerCancel={stop}
       onPointerLeave={stop}
-      className="w-16 h-16 rounded-lg border-2 text-2xl font-bold active:scale-95 touch-none"
-      style={{ background: "rgba(244,208,63,0.18)", borderColor: "#f4d03f", color: "#f4d03f" }}
+      className={`rounded-lg border-2 font-bold active:scale-90 touch-none select-none flex items-center justify-center ${className || ""}`}
+      style={{
+        background: "rgba(244,208,63,0.18)",
+        borderColor: "#f4d03f",
+        color: "#f4d03f",
+      }}
     >
       {label}
     </button>
