@@ -342,7 +342,7 @@ export const DIFFICULTIES: Difficulty[] = [
   { id: "lv7",  label: "Lv7 鬼ハード 👺",     apples: 10, enemySpeedMs: 230, enemies: { banana: 2, apple: 2, chicken: 1, fish: 1 },     items: 2 },
   { id: "lv8",  label: "Lv8 ナイトメア 💀",   apples: 12, enemySpeedMs: 190, enemies: { banana: 3, apple: 2, chicken: 2, fish: 1 },     items: 2 },
   { id: "lv9",  label: "Lv9 地獄 👹",          apples: 15, enemySpeedMs: 150, enemies: { banana: 3, apple: 3, chicken: 3, fish: 2 },     items: 1 },
-  { id: "lv10", label: "Lv10 カオス 🌀",       apples: 20, enemySpeedMs: 110, enemies: { banana: 4, apple: 4, chicken: 4, fish: 3 },     items: 1 },
+  { id: "lv10", label: "Lv10 カオス 🌀",       apples: 30, enemySpeedMs: 1000, enemies: { banana: 5, apple: 5, chicken: 5, fish: 5 },     items: 1 },
   { id: "custom", label: "カスタム ⚙️",         apples: 5,  enemySpeedMs: 320, enemies: { banana: 1 },                                   items: 3 },
 ];
 
@@ -1186,7 +1186,7 @@ export function BananaHorrorGame() {
                   <span>🎁 アイテム数</span>
                   <span style={{ color: "#f4d03f" }}>{customItems}個</span>
                 </div>
-                <input type="range" min={0} max={10} step={1} value={customItems}
+                <input type="range" min={0} max={20} step={1} value={customItems}
                   onChange={(e) => setCustomItems(parseInt(e.target.value))}
                   className="w-full accent-yellow-400" />
               </div>
@@ -1197,7 +1197,7 @@ export function BananaHorrorGame() {
                     {Math.round((2000 / customSpeed) * 10) / 10}歩/秒
                   </span>
                 </div>
-                <input type="range" min={80} max={800} step={20}
+                <input type="range" min={10} max={1000} step={20}
                   value={880 - customSpeed}
                   onChange={(e) => setCustomSpeed(880 - parseInt(e.target.value))}
                   className="w-full accent-yellow-400" />
